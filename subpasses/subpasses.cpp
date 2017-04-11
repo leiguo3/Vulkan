@@ -119,9 +119,9 @@ public:
 		camera.movementSpeed = 5.0f;
 #ifndef __ANDROID__
 		camera.rotationSpeed = 0.25f;
-#endif
-		camera.position = { 9.5f, 4.5f, -5.8f };
-		camera.setRotation(glm::vec3(-9.5f, 53.25f, 0.0f));
+#endif  
+		camera.setPosition(glm::vec3(-3.2f, 1.0f, 5.9f));
+		camera.setRotation(glm::vec3(0.5f, 210.05f, 0.0f));
 		camera.setPerspective(60.0f, (float)width / (float)height, 0.1f, 256.0f);
 	}
 
@@ -488,7 +488,19 @@ public:
 	{
 		models.scene.loadFromFile(getAssetPath() + "models/samplebuilding.dae", vertexLayout, 1.0f, vulkanDevice, queue);
 		models.transparent.loadFromFile(getAssetPath() + "models/samplebuilding_glass.dae", vertexLayout, 1.0f, vulkanDevice, queue);
-		textures.glass.loadFromFile(getAssetPath() + "textures/colored_glass_bc3.ktx", VK_FORMAT_BC3_UNORM_BLOCK, vulkanDevice, queue);
+		// Textures
+		if (vulkanDevice->features.textureCompressionBC) {
+			textures.glass.loadFromFile(getAssetPath() + "textures/colored_glass_bc3_unorm.ktx", VK_FORMAT_BC3_UNORM_BLOCK, vulkanDevice, queue);
+		}
+		else if (vulkanDevice->features.textureCompressionASTC_LDR) {
+			textures.glass.loadFromFile(getAssetPath() + "textures/colored_glass_astc_8x8_unorm.ktx", VK_FORMAT_ASTC_8x8_UNORM_BLOCK, vulkanDevice, queue);
+		}
+		else if (vulkanDevice->features.textureCompressionETC2) {
+			textures.glass.loadFromFile(getAssetPath() + "textures/colored_glass_etc2_unorm.ktx", VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK, vulkanDevice, queue);
+		}
+		else {
+			vks::tools::exitFatal("Device does not support any compressed texture format!", "Error");
+		}
 	}
 
 	void setupVertexDescriptions()
@@ -744,19 +756,19 @@ public:
 			vks::initializers::descriptorImageInfo(
 				VK_NULL_HANDLE,
 				attachments.position.view,
-				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 		VkDescriptorImageInfo texDescriptorNormal =
 			vks::initializers::descriptorImageInfo(
 				VK_NULL_HANDLE,
 				attachments.normal.view,
-				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 		VkDescriptorImageInfo texDescriptorAlbedo =
 			vks::initializers::descriptorImageInfo(
 				VK_NULL_HANDLE,
 				attachments.albedo.view,
-				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 		std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
 			// Binding 0: Position texture target
@@ -883,8 +895,6 @@ public:
 			vks::initializers::writeDescriptorSet(descriptorSets.transparent, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2, &textures.glass.descriptor),
 		};
 		vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, NULL);
-
-		//depthStencilState.depthWriteEnable = VK_TRUE;
 
 		// Enable blending
 		blendAttachmentState.blendEnable = VK_TRUE;

@@ -25,7 +25,7 @@
 
 #define VERTEX_BUFFER_BIND_ID 0
 #define ENABLE_VALIDATION false
-#define SAMPLE_COUNT VK_SAMPLE_COUNT_4_BIT
+#define SAMPLE_COUNT VK_SAMPLE_COUNT_8_BIT
 
 struct {
 	struct {
@@ -278,19 +278,17 @@ public:
 		depthReference.attachment = 2;
 		depthReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-		// Two resolve attachment references for color and depth
-		std::array<VkAttachmentReference,2> resolveReferences = {};
-		resolveReferences[0].attachment = 1;
-		resolveReferences[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		resolveReferences[1].attachment = 3;
-		resolveReferences[1].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		// Resolve attachment reference for the color attachment
+		VkAttachmentReference resolveReference = {};
+		resolveReference.attachment = 1;
+		resolveReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 		VkSubpassDescription subpass = {};
 		subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		subpass.colorAttachmentCount = 1;
 		subpass.pColorAttachments = &colorReference;
 		// Pass our resolve attachments to the sub pass
-		subpass.pResolveAttachments = resolveReferences.data();
+		subpass.pResolveAttachments = &resolveReference;
 		subpass.pDepthStencilAttachment = &depthReference;
 
 		std::array<VkSubpassDependency, 2> dependencies;
@@ -416,7 +414,18 @@ public:
 	void loadAssets()
 	{
 		models.example.loadFromFile(getAssetPath() + "models/voyager/voyager.dae", vertexLayout, 1.0f, vulkanDevice, queue);
-		textures.colorMap.loadFromFile(getAssetPath() + "models/voyager/voyager.ktx", VK_FORMAT_BC3_UNORM_BLOCK, vulkanDevice, queue);
+		if (deviceFeatures.textureCompressionBC) {
+			textures.colorMap.loadFromFile(getAssetPath() + "models/voyager/voyager_bc3_unorm.ktx", VK_FORMAT_BC3_UNORM_BLOCK, vulkanDevice, queue);
+		}
+		else if (deviceFeatures.textureCompressionASTC_LDR) {
+			textures.colorMap.loadFromFile(getAssetPath() + "models/voyager/voyager_astc_8x8_unorm.ktx", VK_FORMAT_ASTC_8x8_UNORM_BLOCK, vulkanDevice, queue);
+		}
+		else if (deviceFeatures.textureCompressionETC2) {
+			textures.colorMap.loadFromFile(getAssetPath() + "models/voyager/voyager_etc2_unorm.ktx", VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK, vulkanDevice, queue);
+		}
+		else {
+			vks::tools::exitFatal("Device does not support any compressed texture format!", "Error");
+		}
 	}
 
 	void setupVertexDescriptions()

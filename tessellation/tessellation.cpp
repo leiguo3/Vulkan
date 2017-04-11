@@ -69,11 +69,11 @@ public:
 		float tessAlpha = 1.0f;
 	} uboTessEval;
 
-	struct {
+	struct Pipelines {
 		VkPipeline solid;
-		VkPipeline wire;
+		VkPipeline wire = VK_NULL_HANDLE;
 		VkPipeline solidPassThrough;
-		VkPipeline wirePassThrough;
+		VkPipeline wirePassThrough = VK_NULL_HANDLE;
 	} pipelines;
 	VkPipeline *pipelineLeft = &pipelines.wirePassThrough;
 	VkPipeline *pipelineRight = &pipelines.wire;
@@ -89,11 +89,6 @@ public:
 		cameraPos = glm::vec3(-3.0f, 2.3f, 0.0f);
 		title = "Vulkan Example - Tessellation shader (PN Triangles)";
 		enableTextOverlay = true;
-		// Enable physical device features required for this example				
-		// Tell the driver that we are going to use geometry shaders
-		enabledFeatures.tessellationShader = VK_TRUE;
-		// Example also uses a wireframe pipeline, enable non-solid fill modes
-		enabledFeatures.fillModeNonSolid = VK_TRUE;
 	}
 
 	~VulkanExample()
@@ -101,9 +96,13 @@ public:
 		// Clean up used Vulkan resources 
 		// Note : Inherited destructor cleans up resources stored in base class
 		vkDestroyPipeline(device, pipelines.solid, nullptr);
-		vkDestroyPipeline(device, pipelines.wire, nullptr);
+		if (pipelines.wire != VK_NULL_HANDLE) {
+			vkDestroyPipeline(device, pipelines.wire, nullptr);
+		};
 		vkDestroyPipeline(device, pipelines.solidPassThrough, nullptr);
-		vkDestroyPipeline(device, pipelines.wirePassThrough, nullptr);
+		if (pipelines.wirePassThrough != VK_NULL_HANDLE) {
+			vkDestroyPipeline(device, pipelines.wirePassThrough, nullptr);
+		};
 
 		vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 		vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
@@ -112,6 +111,27 @@ public:
 		uniformBuffers.tessControl.destroy();
 		uniformBuffers.tessEval.destroy();
 		textures.colorMap.destroy();
+	}
+
+	// Enable physical device features required for this example				
+	virtual void getEnabledFeatures()
+	{
+		// Example uses tessellation shaders
+		if (deviceFeatures.tessellationShader) {
+			enabledFeatures.tessellationShader = VK_TRUE;
+		}
+		else {
+			vks::tools::exitFatal("Selected GPU does not support tessellation shaders!", "Feature not supported");
+		}
+		// Fill mode non solid is required for wireframe display
+		if (deviceFeatures.fillModeNonSolid) {
+			enabledFeatures.fillModeNonSolid = VK_TRUE;
+		}
+		else {
+			// Wireframe not supported, switch to solid pipelines
+			pipelineLeft = &pipelines.solidPassThrough;
+			pipelineRight = &pipelines.solid;
+		}
 	}
 
 	void reBuildCommandBuffers()
@@ -185,7 +205,18 @@ public:
 	void loadAssets()
 	{
 		models.object.loadFromFile(getAssetPath() + "models/lowpoly/deer.dae", vertexLayout, 1.0f, vulkanDevice, queue);
-		textures.colorMap.loadFromFile(getAssetPath() + "textures/deer.ktx", VK_FORMAT_BC3_UNORM_BLOCK, vulkanDevice, queue);
+		if (deviceFeatures.textureCompressionBC) {
+			textures.colorMap.loadFromFile(getAssetPath() + "textures/deer_bc3_unorm.ktx", VK_FORMAT_BC3_UNORM_BLOCK, vulkanDevice, queue);
+		}
+		else if (deviceFeatures.textureCompressionASTC_LDR) {
+			textures.colorMap.loadFromFile(getAssetPath() + "textures/deer_astc_8x8_unorm.ktx", VK_FORMAT_ASTC_8x8_UNORM_BLOCK, vulkanDevice, queue);
+		}
+		else if (deviceFeatures.textureCompressionETC2) {
+			textures.colorMap.loadFromFile(getAssetPath() + "textures/deer_etc2_unorm.ktx", VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK, vulkanDevice, queue);
+		}
+		else {
+			vks::tools::exitFatal("Device does not support any compressed texture format!", "Error");
+		}
 	}
 
 	void setupVertexDescriptions()
@@ -413,8 +444,10 @@ public:
 		// Solid
 		VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1, &pipelineCreateInfo, nullptr, &pipelines.solid));
 		// Wireframe
-		rasterizationState.polygonMode = VK_POLYGON_MODE_LINE;
-		VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1, &pipelineCreateInfo, nullptr, &pipelines.wire));
+		if (deviceFeatures.fillModeNonSolid) {
+			rasterizationState.polygonMode = VK_POLYGON_MODE_LINE;
+			VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1, &pipelineCreateInfo, nullptr, &pipelines.wire));
+		}
 
 		// Pass through pipelines
 		// Load pass through tessellation shaders (Vert and frag are reused)
@@ -425,8 +458,10 @@ public:
 		rasterizationState.polygonMode = VK_POLYGON_MODE_FILL;
 		VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1, &pipelineCreateInfo, nullptr, &pipelines.solidPassThrough));
 		// Wireframe
-		rasterizationState.polygonMode = VK_POLYGON_MODE_LINE;
-		VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1, &pipelineCreateInfo, nullptr, &pipelines.wirePassThrough));
+		if (deviceFeatures.fillModeNonSolid) {
+			rasterizationState.polygonMode = VK_POLYGON_MODE_LINE;
+			VK_CHECK_RESULT(vkCreateGraphicsPipelines(device, pipelineCache, 1, &pipelineCreateInfo, nullptr, &pipelines.wirePassThrough));
+		}
 	}
 
 	// Prepare and initialize uniform buffer containing shader uniforms
@@ -486,12 +521,6 @@ public:
 
 	void prepare()
 	{
-		// Check if device supports tessellation shaders
-		if (!deviceFeatures.tessellationShader)
-		{
-			vks::tools::exitFatal("Selected GPU does not support tessellation shaders!", "Feature not supported");
-		}
-
 		VulkanExampleBase::prepare();
 		loadAssets();
 		setupVertexDescriptions();
@@ -532,7 +561,9 @@ public:
 			break;
 		case KEY_W:
 		case GAMEPAD_BUTTON_A:
-			togglePipelines();
+			if (deviceFeatures.fillModeNonSolid) {
+				togglePipelines();
+			}
 			break;
 		case KEY_S:
 		case GAMEPAD_BUTTON_X:
@@ -547,10 +578,14 @@ public:
 		ss << std::setprecision(2) << std::fixed << uboTessControl.tessLevel;
 #if defined(__ANDROID__)
 		textOverlay->addText("Tessellation level: " + ss.str() + " (Buttons L1/R1 to change)", 5.0f, 85.0f, VulkanTextOverlay::alignLeft);
-		textOverlay->addText("Press \"Button X\" to toggle splitscreen", 5.0f, 100.0f, VulkanTextOverlay::alignLeft);
+		if (deviceFeatures.fillModeNonSolid) {
+			textOverlay->addText("Press \"Button X\" to toggle splitscreen", 5.0f, 100.0f, VulkanTextOverlay::alignLeft);
+		}
 #else
 		textOverlay->addText("Tessellation level: " + ss.str() + " (NUMPAD +/- to change)", 5.0f, 85.0f, VulkanTextOverlay::alignLeft);
-		textOverlay->addText("Press \"s\" to toggle splitscreen", 5.0f, 100.0f, VulkanTextOverlay::alignLeft);
+		if (deviceFeatures.fillModeNonSolid) {
+			textOverlay->addText("Press \"s\" to toggle splitscreen", 5.0f, 100.0f, VulkanTextOverlay::alignLeft);
+		}
 #endif
 	}
 

@@ -149,14 +149,16 @@ public:
 		uniformData.scene.destroy();
 	}
 
-	void reBuildCommandBuffers()
+	// Enable physical device features required for this example				
+	virtual void getEnabledFeatures()
 	{
-		if (!checkCommandBuffers())
-		{
-			destroyCommandBuffers();
-			createCommandBuffers();
+		// Example uses multi draw indirect (if available)
+		if (deviceFeatures.multiDrawIndirect) {
+			enabledFeatures.multiDrawIndirect = VK_TRUE;
 		}
-		buildCommandBuffers();
+		else {
+			std::cout << "MultiDrawIndirect not supported" << std::endl;
+		}
 	}
 
 	void buildCommandBuffers()
@@ -240,8 +242,28 @@ public:
 		models.ground.loadFromFile(getAssetPath() + "models/plane_circle.dae", vertexLayout, PLANT_RADIUS + 1.0f, vulkanDevice, queue);
 		models.skysphere.loadFromFile(getAssetPath() + "models/skysphere.dae", vertexLayout, 512.0f / 10.0f, vulkanDevice, queue);
 
-		textures.plants.loadFromFile(getAssetPath() + "textures/texturearray_plants_bc3.ktx", VK_FORMAT_BC3_UNORM_BLOCK, vulkanDevice, queue);
-		textures.ground.loadFromFile(getAssetPath() + "textures/ground_dry_bc3.ktx", VK_FORMAT_BC3_UNORM_BLOCK, vulkanDevice, queue);
+		// Textures
+		std::string texFormatSuffix;
+		VkFormat texFormat;
+		// Get supported compressed texture format
+		if (vulkanDevice->features.textureCompressionBC) {
+			texFormatSuffix = "_bc3_unorm";
+			texFormat = VK_FORMAT_BC3_UNORM_BLOCK;
+		}
+		else if (vulkanDevice->features.textureCompressionASTC_LDR) {
+			texFormatSuffix = "_astc_8x8_unorm";
+			texFormat = VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
+		}
+		else if (vulkanDevice->features.textureCompressionETC2) {
+			texFormatSuffix = "_etc2_unorm";
+			texFormat = VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK;
+		}
+		else {
+			vks::tools::exitFatal("Device does not support any compressed texture format!", "Error");
+		}
+
+		textures.plants.loadFromFile(getAssetPath() + "textures/texturearray_plants" + texFormatSuffix + ".ktx", texFormat, vulkanDevice, queue);
+		textures.ground.loadFromFile(getAssetPath() + "textures/ground_dry" + texFormatSuffix + ".ktx", texFormat, vulkanDevice, queue);
 	}
 
 	void setupVertexDescriptions()
@@ -621,7 +643,7 @@ public:
 	{
 		VulkanExampleBase::prepareFrame();
 
-		// Command buffer to be sumitted to the queue
+		// Command buffer to be submitted to the queue
 		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &drawCmdBuffers[currentBuffer];
 

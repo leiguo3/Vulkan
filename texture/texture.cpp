@@ -79,7 +79,7 @@ public:
 	{
 		zoom = -2.5f;
 		rotation = { 0.0f, 15.0f, 0.0f };
-		title = "Vulkan Example - Texturing";
+		title = "Vulkan Example - Texture loading";
 		enableTextOverlay = true;
 	}
 
@@ -234,7 +234,7 @@ public:
 
 			memAllocInfo.allocationSize = memReqs.size;
 			// Get memory type index for a host visible buffer
-			memAllocInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+			memAllocInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
 			VK_CHECK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &stagingMemory));
 			VK_CHECK_RESULT(vkBindBufferMemory(device, stagingBuffer, stagingMemory, 0));
@@ -274,7 +274,6 @@ public:
 			imageCreateInfo.arrayLayers = 1;
 			imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 			imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-			imageCreateInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
 			imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 			// Set initial layout of the image to undefined
 			imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -371,7 +370,7 @@ public:
 			memAllocInfo.allocationSize = memReqs.size;
 
 			// Get memory type that can be mapped to host memory
-			memAllocInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+			memAllocInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
 			// Allocate host memory
 			VK_CHECK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &mappableMemory));
@@ -496,6 +495,31 @@ public:
 		vkDestroyImage(device, texture.image, nullptr);
 		vkDestroySampler(device, texture.sampler, nullptr);
 		vkFreeMemory(device, texture.deviceMemory, nullptr);
+	}
+
+	void loadTextures()
+	{
+		// Vulkan core supports three different compressed texture formats
+		// As the support differs between implemementations we need to check device features and select a proper format and file
+		std::string filename;
+		VkFormat format;
+		if (deviceFeatures.textureCompressionBC) {
+			filename = "metalplate01_bc2_unorm.ktx";
+			format = VK_FORMAT_BC2_UNORM_BLOCK;
+		}
+		else if (deviceFeatures.textureCompressionASTC_LDR) {
+			filename = "metalplate01_astc_8x8_unorm.ktx";
+			format = VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
+		}
+		else if (deviceFeatures.textureCompressionETC2) {
+			filename = "metalplate01_etc2_unorm.ktx";
+			format = VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK;
+		}
+		else {
+			vks::tools::exitFatal("Device does not support any compressed texture format!", "Error");
+		}
+
+		loadTexture(getAssetPath() + "textures/" + filename, format, false);
 	}
 
 	void buildCommandBuffers()
@@ -829,13 +853,10 @@ public:
 	void prepare()
 	{
 		VulkanExampleBase::prepare();
+		loadTextures();
 		generateQuad();
 		setupVertexDescriptions();
 		prepareUniformBuffers();
-		loadTexture(
-			getAssetPath() + "textures/pattern_02_bc2.ktx", 
-			VK_FORMAT_BC2_UNORM_BLOCK, 
-			false);
 		setupDescriptorSetLayout();
 		preparePipelines();
 		setupDescriptorPool();
