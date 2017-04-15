@@ -37,7 +37,13 @@ if subprocess.call("python build.py %s" % BUILD_ARGUMENTS) != 0:
     sys.exit(-1)
 
 # Move apk to bin folder
-os.makedirs("../bin", exist_ok=True)
+targetFolder = "../bin";
+if sys.version_info[0] < 3:
+    if not os.path.isdir(targetFolder):
+         os.makedirs(targetFolder)
+else:
+    os.makedirs(targetFolder, exist_ok=True)
+
 for file in glob.glob("vulkan*.apk"):
     print(file)
     shutil.move(file, "../bin/%s" % file)
